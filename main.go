@@ -4,20 +4,18 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
-	"time"
 )
 
 const debug = false
 
 var heights [][]int
 var dimenW, dimenH int
-var sources []int
 
 func main() {
 	mapFile, err := os.Open("data/map.txt")
@@ -102,7 +100,7 @@ func BFS(root *Node) (path, deltaHeight int) {
 				bestPath = path
 				deltaHeight = height - curHeight
 			} else if bestPath == path {
-				if height - curHeight > deltaHeight {
+				if height-curHeight > deltaHeight {
 					deltaHeight = height - curHeight
 				}
 			}
@@ -116,7 +114,7 @@ func BFS(root *Node) (path, deltaHeight int) {
 				bestPath = path
 				deltaHeight = height - curHeight
 			} else if bestPath == path {
-				if height - curHeight > deltaHeight {
+				if height-curHeight > deltaHeight {
 					deltaHeight = height - curHeight
 				}
 			}
@@ -130,7 +128,7 @@ func BFS(root *Node) (path, deltaHeight int) {
 				bestPath = path
 				deltaHeight = height - curHeight
 			} else if bestPath == path {
-				if height - curHeight > deltaHeight {
+				if height-curHeight > deltaHeight {
 					deltaHeight = height - curHeight
 				}
 			}
@@ -144,7 +142,7 @@ func BFS(root *Node) (path, deltaHeight int) {
 				bestPath = path
 				deltaHeight = height - curHeight
 			} else if bestPath == path {
-				if height - curHeight > deltaHeight {
+				if height-curHeight > deltaHeight {
 					deltaHeight = height - curHeight
 				}
 			}
@@ -168,35 +166,6 @@ func PrintQueue(queue []*Node) {
 	}
 }
 
-func Bellford(g *Graph, source int) []int {
-	distances := make([]int, len(g.Vertices))
-
-	for i := range distances {
-		if i == source {
-			distances[i] = 0
-		} else {
-			distances[i] = math.MaxInt16
-		}
-	}
-
-	for i := 0; i < len(g.Vertices)-1; i++ {
-		changed := false
-		for _, edge := range g.Edges {
-			newDist := distances[edge.U] + edge.W
-			if newDist < distances[edge.V] {
-				distances[edge.V] = newDist
-				changed = true
-			}
-		}
-
-		if changed == false {
-			return distances
-		}
-	}
-
-	return distances
-}
-
 func parseLine(l int, line string) {
 	heights[l] = make([]int, dimenW)
 
@@ -205,16 +174,4 @@ func parseLine(l int, line string) {
 		height, _ := strconv.Atoi(strings.TrimSpace(inputs[i]))
 		heights[l][i] = height
 	}
-}
-
-type Edge struct {
-	U int
-	V int
-	W int
-}
-
-//
-type Graph struct {
-	Edges    []*Edge
-	Vertices []int
 }
