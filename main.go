@@ -3,22 +3,21 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
 
-	"io"
-
-	"errors"
-
 	"github.com/sirupsen/logrus"
+	"time"
 )
 
 const debug = false
 
-var points [][]int
-var width, height int
-var sources []*Vertex
+var heights [][]int
+var dimenW, dimenH int
+var sources []int
 
 func main() {
 	mapFile, err := os.Open("data/map.txt")
@@ -26,180 +25,196 @@ func main() {
 
 	if err != nil {
 		logrus.Error(err)
+		return
 	}
 
 	line, err := reader.ReadString('\n')
-	fmt.Sscanf(line, "%d %d", &width, &height)
-	points = make([][]int, height)
+	fmt.Sscanf(line, "%d %d", &dimenW, &dimenH)
+	heights = make([][]int, dimenH)
 
-	vertChan := make(chan Vertex, width*height)
-
-	for l := 0; l < height; l++ {
-
+	for l := 0; l < dimenH; l++ {
 		line, err := reader.ReadString('\n')
-		go parseLine(vertChan, l, line)
+		parseLine(l, line)
 
 		if err == io.EOF {
 			break
 		}
 	}
 
-	graph := &Graph{}
-	graph.Vertices = map[string]Vertex{}
+	now := time.Now()
+	bestPath := 0
+	bestSteepness := 0
+	for y, row := range heights {
+		for x := range row {
+			path, steepness := BFS(&Node{First: x, Second: y})
 
-	for i := 0; i < width*height; i++ {
-		vertex := <-vertChan
-		debugF("storing vertex at %s", vertex.XYStr())
-		graph.Vertices[vertex.XYStr()] = vertex
-	}
-
-	//Calculate edge
-	for y, row := range points {
-		for x, _ := range row {
-			source, err := graph.Vertex(x, y)
-
-			if err == nil {
-				getEdges(graph, source)
-			} else {
-				logrus.Errorf("error=%v", err)
+			if bestPath < path {
+				bestPath = path
+				bestSteepness = steepness
+				logrus.Infof("new best path=%d steepness=%d", bestPath, bestSteepness)
+			} else if bestPath == path && bestSteepness < steepness {
+				bestPath = path
+				bestSteepness = steepness
+				logrus.Infof("new best path=%d steepness=%d", bestPath, bestSteepness)
 			}
 		}
 	}
 
-	debugF("g.V=%d g.E=%d g.EL=%#v", len(graph.Vertices), len(graph.Edges), graph.Edges)
-	logrus.Infof("sources len=%d", len(sources))
+	logrus.Infof("best path=%d steepness=%d", bestPath, bestSteepness)
+	logrus.Infof("time elapsed %s", time.Since(now))
 }
 
-func parseLine(channel chan Vertex, l int, line string) {
-	points[l] = make([]int, width)
+type Node struct {
+	First  int
+	Second int
+	Path   int
+}
 
-	numbers := strings.Split(line, " ")
-	for i, numberStr := range numbers {
-		number, _ := strconv.Atoi(strings.TrimSpace(numberStr))
-		points[l][i] = number
+func BFS(root *Node) (path, deltaHeight int) {
+	queue := []*Node{root}
+	var pair *Node
 
-		channel <- Vertex{
-			X:      i,
-			Y:      l,
-			Height: number,
+	height := heights[root.Second][root.First]
+	deltaHeight = -1
+	root.Path = 0
+	path = 0
+	bestPath := 0
+
+	for {
+		if len(queue) == 0 {
+			return
+		}
+
+		pair, queue = queue[0], queue[1:]
+		path = pair.Path + 1
+
+		if debug {
+			logrus.Infof("pair=%#v", pair)
+			logrus.Infof("len(q)=%d", len(queue))
+			PrintQueue(queue)
+		}
+
+		if pair.First-1 >= 0 && heights[pair.Second][pair.First] > heights[pair.Second][pair.First-1] {
+			curHeight := heights[pair.Second][pair.First-1]
+			queue = append(queue, &Node{First: pair.First - 1, Second: pair.Second, Path: path})
+
+			if bestPath < path {
+				bestPath = path
+				deltaHeight = height - curHeight
+			} else if bestPath == path {
+				if height - curHeight > deltaHeight {
+					deltaHeight = height - curHeight
+				}
+			}
+		}
+
+		if pair.First+1 <= dimenW-1 && heights[pair.Second][pair.First] > heights[pair.Second][pair.First+1] {
+			curHeight := heights[pair.Second][pair.First+1]
+			queue = append(queue, &Node{First: pair.First + 1, Second: pair.Second, Path: path})
+
+			if bestPath < path {
+				bestPath = path
+				deltaHeight = height - curHeight
+			} else if bestPath == path {
+				if height - curHeight > deltaHeight {
+					deltaHeight = height - curHeight
+				}
+			}
+		}
+
+		if pair.Second-1 >= 0 && heights[pair.Second][pair.First] > heights[pair.Second-1][pair.First] {
+			curHeight := heights[pair.Second-1][pair.First]
+			queue = append(queue, &Node{First: pair.First, Second: pair.Second - 1, Path: path})
+
+			if bestPath < path {
+				bestPath = path
+				deltaHeight = height - curHeight
+			} else if bestPath == path {
+				if height - curHeight > deltaHeight {
+					deltaHeight = height - curHeight
+				}
+			}
+		}
+
+		if pair.Second+1 <= dimenH-1 && heights[pair.Second][pair.First] > heights[pair.Second+1][pair.First] {
+			curHeight := heights[pair.Second+1][pair.First]
+			queue = append(queue, &Node{First: pair.First, Second: pair.Second + 1, Path: path})
+
+			if bestPath < path {
+				bestPath = path
+				deltaHeight = height - curHeight
+			} else if bestPath == path {
+				if height - curHeight > deltaHeight {
+					deltaHeight = height - curHeight
+				}
+			}
+		}
+
+		if debug {
+			PrintQueue(queue)
+			logrus.Infof("len(q)=%d\n--------------", len(queue))
 		}
 	}
 }
 
-func debugF(format string, args ...interface{}) {
-	if debug {
-		if len(args) > 0 {
-			logrus.Infof(format, args...)
+func PrintQueue(queue []*Node) {
+	if len(queue) == 0 {
+		logrus.Infof("[]")
+		return
+	}
+
+	for _, p := range queue {
+		logrus.Infof("p=%#v", p)
+	}
+}
+
+func Bellford(g *Graph, source int) []int {
+	distances := make([]int, len(g.Vertices))
+
+	for i := range distances {
+		if i == source {
+			distances[i] = 0
 		} else {
-			logrus.Info(format)
+			distances[i] = math.MaxInt16
 		}
 	}
+
+	for i := 0; i < len(g.Vertices)-1; i++ {
+		changed := false
+		for _, edge := range g.Edges {
+			newDist := distances[edge.U] + edge.W
+			if newDist < distances[edge.V] {
+				distances[edge.V] = newDist
+				changed = true
+			}
+		}
+
+		if changed == false {
+			return distances
+		}
+	}
+
+	return distances
 }
 
-func getEdges(g *Graph, source *Vertex) {
-	hasEdge := false
-	if source.X-1 >= 0 {
-		dest, err := g.Vertex(source.X-1, source.Y)
-		if err != nil {
-			logrus.Errorf("error getting vertex, error=%v", err)
-		}
+func parseLine(l int, line string) {
+	heights[l] = make([]int, dimenW)
 
-		if dest != nil && dest.Height < source.Height {
-			g.Edges = append(g.Edges, Edge{
-				U:      *source,
-				V:      *dest,
-				Weight: -1,
-			})
-
-			hasEdge = true
-		}
-
+	inputs := strings.Split(line, " ")
+	for i := 0; i < dimenW; i++ {
+		height, _ := strconv.Atoi(strings.TrimSpace(inputs[i]))
+		heights[l][i] = height
 	}
-
-	if source.X+1 <= width-1 {
-		dest, err := g.Vertex(source.X+1, source.Y)
-		if err != nil {
-			logrus.Errorf("error getting vertex, error=%v", err)
-		}
-
-		if dest != nil && dest.Height < source.Height {
-			g.Edges = append(g.Edges, Edge{
-				U:      *source,
-				V:      *dest,
-				Weight: -1,
-			})
-
-			hasEdge = true
-		}
-	}
-
-	if source.Y-1 >= 0 {
-		dest, err := g.Vertex(source.X, source.Y-1)
-		if err != nil {
-			logrus.Errorf("error getting vertex, error=%v", err)
-		}
-
-		if dest != nil && dest.Height < source.Height {
-			g.Edges = append(g.Edges, Edge{
-				U:      *source,
-				V:      *dest,
-				Weight: -1,
-			})
-
-			hasEdge = true
-		}
-	}
-
-	if source.Y+1 <= height-1 {
-		dest, err := g.Vertex(source.X, source.Y+1)
-		if err != nil {
-			logrus.Errorf("error getting vertex, error=%v", err)
-		}
-
-		if dest != nil && dest.Height < source.Height {
-			g.Edges = append(g.Edges, Edge{
-				U:      *source,
-				V:      *dest,
-				Weight: -1,
-			})
-
-			hasEdge = true
-		}
-	}
-
-	if hasEdge {
-		sources = append(sources, source)
-	}
-}
-
-type Vertex struct {
-	X      int
-	Y      int
-	Height int
-}
-
-func (v *Vertex) XYStr() string {
-	return fmt.Sprintf("%d_%d", v.X, v.Y)
 }
 
 type Edge struct {
-	U      Vertex
-	V      Vertex
-	Weight int
+	U int
+	V int
+	W int
 }
 
+//
 type Graph struct {
-	Vertices map[string]Vertex
-	Edges    []Edge
-}
-
-func (g *Graph) Vertex(x int, y int) (*Vertex, error) {
-	debugF("fetching vertex at %d_%d", x, y)
-	v, ok := g.Vertices[fmt.Sprintf("%d_%d", x, y)]
-
-	if ok {
-		return &v, nil
-	}
-
-	return nil, errors.New(fmt.Sprintf("Vertex not found for coord(%d, %d)", x, y))
+	Edges    []*Edge
+	Vertices []int
 }
